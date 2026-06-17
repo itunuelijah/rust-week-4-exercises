@@ -138,15 +138,17 @@ pub fn parse_cli_args(args: &[String]) -> Result<CliCommand, BitcoinError> {
     // TODO: Match args to "send" or "balance" commands and parse required arguments
     match args {
         [cmd, amount, address] if cmd == "send" => {
-            let amount = amount
-                .parse::<u64>()
+            let amount = u64::from_str(amount)
                 .map_err(|_| BitcoinError::ParseError("Invalid amount".into()))?;
+
             Ok(CliCommand::Send {
                 amount,
                 address: address.clone(),
             })
         }
+
         [cmd] if cmd == "balance" => Ok(CliCommand::Balance),
+
         _ => Err(BitcoinError::ParseError("Invalid command".into())),
     }
 }

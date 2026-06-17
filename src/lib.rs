@@ -137,7 +137,7 @@ pub struct OutPoint {
 pub fn parse_cli_args(args: &[String]) -> Result<CliCommand, BitcoinError> {
     // TODO: Match args to "send" or "balance" commands and parse required arguments
     match args {
-        ["send", amount, address] => {
+        [cmd, amount, address] if cmd == "send" => {
             let amount = amount
                 .parse::<u64>()
                 .map_err(|_| BitcoinError::ParseError("Invalid amount".into()))?;
@@ -146,7 +146,7 @@ pub fn parse_cli_args(args: &[String]) -> Result<CliCommand, BitcoinError> {
                 address: address.clone(),
             })
         }
-        ["balance"] => Ok(CliCommand::Balance),
+        [cmd] if cmd == "balance" => Ok(CliCommand::Balance),
         _ => Err(BitcoinError::ParseError("Invalid command".into())),
     }
 }
@@ -166,6 +166,26 @@ impl TryFrom<&[u8]> for LegacyTransaction {
         if data.len() < 10 {
             return Err(BitcoinError::InvalidTransaction);
         }
+
+        let mut offset = 0;
+
+        let read_u32 = |data: &[u8], offset: &mut usize| -> u32 {
+            let bytes: [u8; 4] = data[*offset..*offset + 4]
+                .try_into()
+                .expect("slice already validated");
+            *offset += 4;
+            u32::from_le_bytes(bytes)
+        };
+
+        let version = read_u32(data, &mut offset);
+        let inputs_count = read_u32(data, &mut offset);
+        let lock_time = read_u32(data, &mut offset);
+
+        Ok(LegacyTransaction {
+            version,
+            inputs_count,
+            lock_time,
+        })
     }
 }
 

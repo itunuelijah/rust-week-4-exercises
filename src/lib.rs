@@ -165,18 +165,71 @@ impl TryFrom<&[u8]> for LegacyTransaction {
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         // TODO: Parse binary data into a LegacyTransaction
         // Minimum length is 10 bytes (4 version + 4 inputs count + 4 lock_time)
-        if data.len() < 12 {
+        if data.len() < 10 {
             return Err(BitcoinError::InvalidTransaction);
         }
+        let mut position = 0;
 
-        let version = i32::from_le_bytes(data[0..4].try_into().unwrap());
+        fn read_bytes(data: &[u8], position: &mut usize, length: usize) -> Vec<u8> {
+            let end = (*position + length).min(data.len());
+            let mut result = vec![0u8; length];
+            if *position < data.len() {
+                let available_bytes = &data[*position..end];
+                result[..available_bytes.len()].copy_from_slice(available_bytes);
+            }
+            *position = (*position + length).min(data.len());
+            result
+        }
 
-        let lock_time = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        let version = i32::from_le_bytes(read_bytes(data, &mut position, 4).try_into().unwrap());
+
+        let input_count =
+            u32::from_le_bytes(read_bytes(data, &mut position, 4).try_into().unwrap());
+        let mut inputs = Vec::with_capacity(input_count as usize);
+        for _ in 0..input_count {
+            let mut previous_txid = [0u8; 32];
+            previous_txid.copy_from_slice(&read_bytes(data, &mut position, 32));
+
+            let previous_vout =
+                u32::from_le_bytes(read_bytes(data, &mut position, 4).try_into().unwrap());
+
+            let script_sig_length = read_bytes(data, &mut position, 1)[0] as usize;
+            let script_sig = read_bytes(data, &mut position, script_sig_length);
+
+            let sequence =
+                u32::from_le_bytes(read_bytes(data, &mut position, 4).try_into().unwrap());
+
+            inputs.push(TxInput {
+                previous_output: OutPoint {
+                    txid: previous_txid,
+                    vout: previous_vout,
+                },
+                script_sig,
+                sequence,
+            });
+        }
+
+        let output_count =
+            u32::from_le_bytes(read_bytes(data, &mut position, 4).try_into().unwrap());
+        let mut outputs = Vec::with_capacity(output_count as usize);
+
+        for _ in 0..output_count {
+            let value_in_satoshis =
+                u64::from_le_bytes(read_bytes(data, &mut position, 8).try_into().unwrap());
+            let script_pubkey_length = read_bytes(data, &mut position, 1)[0] as usize;
+            let script_pubkey = read_bytes(data, &mut position, script_pubkey_length);
+            outputs.push(TxOutput {
+                value: value_in_satoshis,
+                script_pubkey,
+            });
+        }
+
+        let lock_time = u32::from_le_bytes(read_bytes(data, &mut position, 4).try_into().unwrap());
 
         Ok(LegacyTransaction {
             version,
-            inputs: Vec::new(),
-            outputs: Vec::new(),
+            inputs,
+            outputs,
             lock_time,
         })
     }
